@@ -3,6 +3,8 @@ git-branch-diff
 
 The git-branch-diff tool is a simple script for performing a directory compare of the current state of the working tree of a given branch since it was originally branched. This is largely intended to be used with a graphical directory compare tool.
 
+To learn more about the background and rationale behind this tool, see the [blog post](http://sleeplesscoding.blogspot.com/2010/04/see-visual-diff-of-work-done-in-git.html)
+
 Installation
 ------------
 
