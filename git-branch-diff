@@ -1,0 +1,160 @@
+#!/usr/bin/env ruby
+#
+# git-branch-diff
+#
+#   Computes the diff of the current working tree against the state
+#   of the "parent" branch it was branched from.
+#
+# Licensed Under The BSD License
+# ------------------------------
+#
+# Copyright (c) 2010, Scott W. Bradley <scottwb@gmail.com>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#   * Redistributions of source code must retain the above copyright notice,
+#     this list of conditions and the following disclaimer.
+#
+#   * Redistributions in binary form must reproduce the above copyright notice,
+#     this list of conditions and the following disclaimer in the documentation
+#     and/or other materials provided with the distribution.
+#
+#   * Neither the names Scott W. Bradley, scottwb, Strings, Inc., nor the
+#     names of their contributors may be used to endorse or promote products
+#     derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+
+
+###############################################################################
+# Usage
+###############################################################################
+usage=<<EOT
+
+Usage:
+
+  git branch-diff [OPTIONS] [parent-branch]
+
+  Computes the diff of the current working tree against the state
+  of the "parent" branch it was branched from. This uses the current state
+  of the working tree filesystem, assumed to be in the branch, and determines
+  what changes have happened since the last merge base with the parent
+  branch.
+
+  This effectively shows you what file changes would be committed to the
+  parent branch if the current working tree were to be comitted and
+  merged into the parent branch.
+
+  PARAMETERS:
+
+    parent-branch:
+      The name of the parent branch to compare to. If unspecified, this
+      defaults to 'master'.
+
+  OPTIONS:
+
+    -h
+      displays this message
+
+  CONFIGURATION:
+
+    You can configure the diff tool that is used to do a directory compare.
+    By default it will use `diff -r`. To specify a different program by
+    either using the git config, e.g.:
+
+      git config --global branchdiff.cmd /path/to/dir/cmp/tool
+
+    or you can set it in an environment variable, e.g.:
+
+      export GIT_BRANCH_DIFF_CMP=/path/to/dir/cmp/tool
+
+   If the environment variable is set, it will take precedence over
+   the git config file.
+
+EOT
+
+
+###############################################################################
+# Configuration
+###############################################################################
+DEFAULT_PARENT_BRANCH = 'master'
+DEFAULT_DIR_COMPARE   = 'diff -r'
+
+
+###############################################################################
+# Setup
+###############################################################################
+require 'getoptlong'
+GetoptLong.new(
+  ['--help', '-h', GetoptLong::NO_ARGUMENT]
+).each do |opt, arg|
+  if opt == '--help'
+    puts usage
+    exit
+  end
+end
+
+
+###############################################################################
+# Main Program
+###############################################################################
+
+# Get the name of the parent branch and dir compare program to use.
+parent_branch = ARGV[0] || DEFAULT_PARENT_BRANCH
+dir_compare   = ENV['GIT_BRANCH_DIFF_CMP'] || `git config --get branchdiff.cmd`.strip
+dir_compare   = DEFAULT_DIR_COMPARE if dir_compare.empty?
+
+# Figure out the SHA of the commit that makes up the last time
+# this branch was the same as the parent.
+merge_base = `git merge-base #{parent_branch} HEAD`.strip
+
+# Make a temporary directory structure "old" and "new" files
+# to be dir-compared.
+tmp_dir = ".git-branch-diff-tmp-%x"  % rand(2**24)
+old_dir = "#{tmp_dir}/old"
+new_dir = "#{tmp_dir}/new"
+system("mkdir #{tmp_dir}")
+system("mkdir #{old_dir}")
+system("mkdir #{new_dir}")
+
+# Find all the file that are different and copy the old and new versions
+# into the old and new directories to be compared.
+`git diff --name-status #{merge_base}`.each_line do |line|
+  line.strip!
+  if line =~ /^([^\s]+)\s+(.+)$/
+    status   = $1
+    filename = $2
+    subdir   = File.dirname(filename)
+    system("mkdir -p \"#{old_dir}/#{subdir}\"")
+    system("mkdir -p \"#{new_dir}/#{subdir}\"")
+
+    # If it's not a new file, grab a copy of the old one.
+    if status != 'A'
+      system("git show \"#{merge_base}:#{filename}\" > \"#{old_dir}/#{filename}\"")
+    end
+
+    # If it's not a deleted file, grab a copy of the current one.
+    if status != 'D'
+      system("cp \"#{filename}\" \"#{new_dir}/#{filename}\"")
+    end
+  end
+end
+
+# Run the directory compare on the temporary old and new dirs.
+system("#{dir_compare} \"#{old_dir}\" \"#{new_dir}\"")
+
+# Cleanup tmp dirs.
+system("rm -rf \"#{tmp_dir}\"")
