@@ -26,7 +26,7 @@ I highly recommend [SmartSynchronize](http://www.syntevo.com/smartsynchronize/in
 
 To configure `git-branch-diff` to use SmartSynchronize, on Mac OS X, for example:
 
-    git config --global branchdiff.cmd /Applications/SmartSynchronize/smartsynchronze.sh
+    git config --global branchdiff.cmd /Applications/SmartSynchronize.app/smartsynchronize.sh
 
 Usage
 -----
